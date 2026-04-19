@@ -1,0 +1,532 @@
+================================================================================
+  MEDASSIST — AI-DRIVEN MEDICATION ADHERENCE SYSTEM
+  Complete Project Development Log
+  Generated: April 19, 2026
+================================================================================
+
+--------------------------------------------------------------------------------
+  PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+
+Name        : MedAssist
+Type        : Java SE 17 Desktop Application (Maven)
+Purpose     : AI-driven Medication Adherence System for elderly and
+              visually impaired users
+UI          : Java Swing (Nimbus dark theme)
+Build Tool  : Apache Maven 3.9.6
+Language    : Java 17
+Location    : F:\projects\java\medassist\
+
+--------------------------------------------------------------------------------
+  PROJECT STRUCTURE
+--------------------------------------------------------------------------------
+
+medassist/
+├── pom.xml
+├── mvnw.cmd                          (Maven Wrapper — no install needed)
+├── .mvn/
+│   └── wrapper/
+│       ├── maven-wrapper.jar
+│       └── maven-wrapper.properties
+└── src/
+    └── main/
+        └── java/
+            └── com/
+                └── medassist/
+                    ├── MedAssistApp.java               (Entry point)
+                    ├── model/
+                    │   ├── Medication.java
+                    │   ├── MedicationStatus.java
+                    │   ├── Patient.java
+                    │   ├── Caregiver.java
+                    │   ├── Prescription.java
+                    │   ├── DoseLog.java
+                    │   └── Language.java
+                    ├── service/
+                    │   ├── Notifiable.java             (Interface)
+                    │   ├── BaseReminder.java           (Abstract class)
+                    │   ├── ReminderService.java
+                    │   ├── OCRService.java
+                    │   ├── EscalationService.java
+                    │   └── ActivityMonitor.java
+                    ├── voice/
+                    │   ├── SpeechCapable.java          (Interface)
+                    │   ├── LanguagePack.java
+                    │   ├── VoiceEngine.java
+                    │   └── WindowsSpeechRecognizer.java
+                    ├── ui/
+                    │   ├── MainFrame.java
+                    │   ├── MedicationPanel.java
+                    │   ├── ScanPanel.java
+                    │   ├── VoicePanel.java
+                    │   └── CaregiverPanel.java
+                    ├── exception/
+                    │   ├── MedicationNotFoundException.java
+                    │   ├── OCRFailureException.java
+                    │   └── EscalationException.java
+                    └── util/
+                        ├── AppConstants.java
+                        ├── DateTimeUtil.java
+                        ├── RegexParser.java
+                        └── FileStorageUtil.java
+
+Total source files: 30 Java files
+
+--------------------------------------------------------------------------------
+  DEPENDENCIES (pom.xml)
+--------------------------------------------------------------------------------
+
+1. Tess4J 5.8.0          — OCR (optical character recognition) for prescription
+                            scanning. Falls back to simulation if Tesseract native
+                            binaries are not installed.
+
+2. JavaMail 1.6.2        — SMTP email integration for caregiver escalation alerts.
+
+3. exec-maven-plugin 3.1.0 — Allows running the app via: mvn exec:java
+
+4. maven-jar-plugin 3.3.0  — Sets MedAssistApp as the JAR main class.
+
+--------------------------------------------------------------------------------
+  HOW TO RUN
+--------------------------------------------------------------------------------
+
+Step 1: Set JAVA_HOME (only needed in current PowerShell session if Java was
+        just installed):
+
+        $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.18.8-hotspot"
+        $env:Path = "$env:JAVA_HOME\bin;" + $env:Path
+
+Step 2: Navigate to project:
+
+        cd F:\projects\java\medassist
+
+Step 3: Compile:
+
+        mvn compile
+
+Step 4: Run:
+
+        mvn exec:java
+
+Note: Run compile and exec:java as SEPARATE lines in PowerShell.
+      '&&' is NOT supported in older PowerShell versions.
+
+--------------------------------------------------------------------------------
+  LAYER 1 — MODEL (com.medassist.model)
+--------------------------------------------------------------------------------
+
+Medication.java
+  Fields   : drugName (String), dosage (String), frequency (String),
+             scheduledTime (LocalTime), isCritical (boolean),
+             status (MedicationStatus)
+  Methods  : full getters, setters, constructor, toString()
+
+MedicationStatus.java (Enum)
+  Values   : PENDING, TAKEN, MISSED, SKIPPED, CRITICAL_MISSED
+
+Patient.java
+  Fields   : patientId (String), name (String), language (Language),
+             medications (ArrayList<Medication>), caregiver (Caregiver)
+  Methods  : addMedication(), removeMedication(), full getters/setters
+
+Caregiver.java
+  Fields   : name, email, phone, relationship
+  Methods  : full getters, setters, constructor
+
+Prescription.java
+  Fields   : drugName, dosage, frequency, duration, confidence
+  Purpose  : Container for OCR scan results
+
+DoseLog.java
+  Fields   : medicationName, scheduledTime, actualTakenTime, status
+  Purpose  : Audit record for each dose event
+
+Language.java (Enum)
+  Values   : ENGLISH, TELUGU, HINDI
+  Each has : locale string and greeting phrase
+
+--------------------------------------------------------------------------------
+  LAYER 2 — SERVICE (com.medassist.service)
+--------------------------------------------------------------------------------
+
+Notifiable.java (Interface)
+  Methods  : sendNotification(String), escalate(Patient, Medication)
+
+BaseReminder.java (Abstract Class)
+  Fields   : ScheduledExecutorService scheduler
+  Methods  : scheduleReminder(), cancelReminder(), abstract fireAlert()
+  Purpose  : Base class for all reminder types (OOP inheritance)
+
+ReminderService.java (extends BaseReminder, implements Notifiable)
+  Purpose  : Schedules medication reminders using ScheduledExecutorService
+  Features :
+    - Calculates delay in seconds until each medication's scheduledTime
+    - Checks ActivityMonitor.isUserActive() before firing alert
+    - If patient is inactive (sleep hours or random probability), delays
+      reminder by 2 minutes
+    - Maintains List<Notifiable> for polymorphic notification dispatch
+    - Fires both voice (VoiceEngine) and email (EscalationService) alerts
+
+OCRService.java
+  Purpose  : Scans prescription images and extracts medication details
+  Features :
+    - Uses Tess4J (loaded via Java reflection to avoid crash if missing)
+    - Falls back to simulation mode if Tesseract native libs not found
+    - Delegates parsed text to RegexParser
+
+EscalationService.java (implements Notifiable)
+  Purpose  : Monitors missed doses and emails the caregiver
+  Features :
+    - Background ScheduledExecutorService polls every 5 minutes
+    - Sends HTML-formatted alert email via JavaMail / Gmail SMTP
+    - Deduplicates alerts (does not send duplicate emails)
+    - Persists escalation log to data/escalation_log.txt
+    - Provides triggerTestAlert() for UI testing
+
+ActivityMonitor.java
+  Purpose  : Simulates patient activity detection
+  Logic    :
+    - Returns inactive during 22:00–06:00 (sleep hours)
+    - During waking hours: 70% probability of being active
+    - Used by ReminderService to delay reminders for inactive patients
+
+--------------------------------------------------------------------------------
+  LAYER 3 — VOICE (com.medassist.voice)
+--------------------------------------------------------------------------------
+
+SpeechCapable.java (Interface)
+  Methods  : speak(String, Language), listen(), parseCommand(String)
+
+LanguagePack.java
+  Purpose  : Multilingual string repository
+  Keys     : greeting, reminder, taken_confirm, missed_alert, escalation_sent
+  Languages: English, Telugu, Hindi
+
+VoiceEngine.java (implements SpeechCapable)
+  Version 1 Features:
+    - speak() — prints localised text to console with language tag
+    - listen() — cycles through demo commands
+    - parseCommand() — maps keywords to CMD_* constants
+
+  Version 2 Enhancements (natural language processing):
+    - setInput(String) — UI injects typed/transcribed text
+    - listen() — returns injected input or falls back to demo commands
+    - extractMedicationDetails(String input) — NLP extraction:
+        * DRUG_NAME_PATTERN  — extracts drug name after "add"/"mark"/"schedule"
+        * DOSAGE_PATTERN     — extracts "100mg", "2 tablets", "500ml", etc.
+        * TIME_PATTERN       — extracts "at 9am", "at 21:00", "at 9:30pm"
+        * FREQUENCY_PATTERN  — extracts "once daily", "twice daily", etc.
+        * MISSED_DRUG_PATTERN — extracts drug from "I missed my X dose"
+        * TAKEN_DRUG_PATTERN  — extracts drug from "I have taken X"
+    - Returns Map<String, String> with keys: drugName, dosage, time, frequency
+    - parseTime() — converts hour/min/ampm to 24-hour "HH:mm" format
+    - cleanDrugName() — removes noise words (dose, medication, tablet) from name
+
+WindowsSpeechRecognizer.java (NEW)
+  Purpose  : Real microphone speech recognition for Windows
+  How it works:
+    - Spawns a PowerShell process with an inline System.Speech script
+    - Uses System.Speech.Recognition.SpeechRecognitionEngine (built into .NET)
+    - Loads DictationGrammar for free-form speech
+    - Settings: InitialSilenceTimeout=6s, EndSilenceTimeout=2s, BabbleTimeout=0
+    - Records up to 10 seconds of audio from default microphone
+    - Returns top recognition result + alternate hypotheses (newline-separated)
+    - Non-blocking: uses ExecutorService + Consumer callbacks (onResult, onError)
+    - Requires: Windows + .NET Framework 3.5+ (no extra downloads needed)
+
+--------------------------------------------------------------------------------
+  LAYER 4 — EXCEPTION (com.medassist.exception)
+--------------------------------------------------------------------------------
+
+MedicationNotFoundException.java  — Checked exception, medication not found
+OCRFailureException.java          — Checked exception, OCR pipeline failed
+EscalationException.java          — Checked exception, email delivery failed
+
+All three follow the standard pattern:
+  - Default constructor
+  - Message constructor
+  - Cause constructor
+  - Message + cause constructor
+
+--------------------------------------------------------------------------------
+  LAYER 5 — UTIL (com.medassist.util)
+--------------------------------------------------------------------------------
+
+AppConstants.java
+  Contains : APP_NAME, APP_VERSION, WINDOW_WIDTH (1050), WINDOW_HEIGHT (680)
+             GRACE_PERIOD_MINUTES (15), ESCALATION_INTERVAL_MINUTES (5)
+             SMTP credentials (placeholder — update before real email use)
+             CMD_TAKEN, CMD_MISSED, CMD_ADD, CMD_SCHEDULE, CMD_SCAN, CMD_UNKNOWN
+
+DateTimeUtil.java
+  Methods :
+    - formatTimeForDisplay(LocalTime) — "08:00 AM"
+    - formatDateForStorage(LocalDate) — "2026-04-15"
+    - todayAsDisplayString()          — "April 15, 2026"
+    - secondsUntil(LocalTime)         — seconds until next occurrence of time
+
+RegexParser.java
+  Methods :
+    - parsePrescription(String text)  — 5 named regex patterns extract
+      drugName, dosage, frequency, duration fields from OCR text
+    - Returns Map<String, String>
+
+FileStorageUtil.java
+  Methods :
+    - savePatient(Patient)     — Java serialization to data/patient.dat
+    - loadPatient()            — Deserializes patient record
+    - saveDoseLog(DoseLog)     — Appends to data/dose_log.txt
+    - saveEscalationLog(entry) — Appends to data/escalation_log.txt
+    - readEscalationLog()      — Returns full log text for UI display
+    - Auto-creates data/ directory if not present
+
+--------------------------------------------------------------------------------
+  LAYER 6 — UI (com.medassist.ui)
+--------------------------------------------------------------------------------
+
+MainFrame.java (JFrame)
+  Layout   : BorderLayout — Header | Custom Tab Bar | Content Area | Status Bar
+  Header   :
+    - Gradient navy background (dark navy to navy)
+    - App icon + "MedAssist" title + "AI Medication Adherence" tagline
+    - Patient info chip (avatar + name + today's date)
+  Tab Bar  :
+    - Custom-painted buttons (not JTabbedPane)
+    - Active tab has blue accent underline
+    - Hover state highlights
+    - Tabs: 💊 Medications | 🔬 Scan Rx | 🎙️ Voice | 👩‍⚕️ Caregiver
+    - CardLayout swaps content on tab click
+  Status Bar:
+    - Green dot + "Reminder service active · MedAssist · v1.0.0"
+  On Load  :
+    - Loads patient from FileStorageUtil or creates demo patient
+    - Demo patient: Ramu Rao with 4 medications (Metformin, Amlodipine,
+      Atorvastatin, Aspirin)
+    - Demo caregiver: Priya Sharma (daughter)
+  On Close :
+    - Confirmation dialog before exit
+    - Shuts down ReminderService and EscalationService threads
+
+MedicationPanel.java
+  Layout      : Header (title + stats bar) | Table | Button bar
+  Stats Bar   : 4 cards — Total / Taken / Pending / Critical
+                Each card has colored left accent bar (blue/green/amber/red)
+                Numbers update every time refreshTable() is called
+  Table       :
+    - Columns: Drug Name | Dosage | Scheduled Time | Status
+    - Row height: 50px
+    - Alternating row colors (dark navy shades)
+    - Hover highlight on mouse-over row
+    - Selected row: blue highlight
+    - Custom DrugNameRenderer: bold text, red color for critical meds (⚠ prefix)
+    - Custom StatusBadgeRenderer: pill-shaped badge with colored border
+      (semi-transparent fill, colored stroke, color matches status)
+      TAKEN=green, MISSED=red, SKIPPED=amber, PENDING=gray
+  Buttons     :
+    - ✅ Mark as Taken — marks selected row as TAKEN, saves to file
+    - ➕ Add Medication — dialog form (drug, dose, frequency, time, critical check)
+    - 🔄 Refresh — reloads table from patient data
+  All buttons : Rounded pill shape with hover brightness effect
+
+ScanPanel.java
+  Features :
+    - File chooser to select prescription image
+    - SwingWorker runs OCR in background (non-blocking UI)
+    - Shows scanned image preview
+    - Displays extracted fields in editable text boxes
+    - "Confirm & Add" button adds medication to patient schedule
+    - Falls back to simulated prescription text if Tesseract not installed
+
+VoicePanel.java (Major upgrades across 2 iterations)
+  Version 1:
+    - Language selector chips (English / Telugu / Hindi)
+    - "🎤 Speak" button cycling demo commands
+    - Greet button
+    - Monospace output terminal area
+
+  Version 2:
+    - Text input field with placeholder ("Type a command or press 🎙️ to speak")
+    - Example chips (clickable): "add Aspirin 100mg at 9am",
+      "mark Metformin as taken", "I missed my Amlodipine dose",
+      "schedule Atorvastatin at 9pm", "scan prescription"
+    - Process ▶ button (purple) — also triggered by pressing Enter
+    - 🎙️ Record button (gray, turns red when recording)
+
+  Voice Recording Flow:
+    1. Click 🎙️ — button turns ⏹, border turns red, field shows "🔴 Listening…"
+    2. Timer counts seconds elapsed
+    3. Windows Speech API captures audio (via PowerShell)
+    4. After recognition: Review & Confirm dialog appears
+    5. Dialog shows:
+       - "I heard:" label
+       - Editable text field with best recognition result
+       - Clickable alternate chips (other recognition hypotheses)
+       - "Correct any mistakes, then press Process." hint
+    6. OK → auto-processes the corrected command
+    7. Cancel → puts text in main field for manual editing
+
+  Command Execution (real actions):
+    CMD_ADD:
+      - Extracts drug name, dosage, time, frequency from NLP
+      - Creates new Medication object and adds to patient list
+      - Saves to patient.dat immediately
+      - Returns: "✅ Added Aspirin (100mg) scheduled at 09:00 — once daily."
+
+    CMD_TAKEN:
+      - Extracts drug name from NLP
+      - If name found: finds matching medication (fuzzy case-insensitive match)
+      - Marks it as TAKEN, saves to patient.dat
+      - If no name: marks first PENDING medication as taken
+      - Response in selected language (English/Telugu/Hindi)
+
+    CMD_MISSED:
+      - Extracts drug name from NLP
+      - Finds matching medication and marks it MISSED
+      - Saves to patient.dat
+      - Response in selected language
+
+    CMD_SCHEDULE:
+      - Extracts drug name and new time
+      - Finds matching medication and updates scheduledTime
+      - Saves to patient.dat
+
+    CMD_SCAN:
+      - Responds: "Navigate to the Scan Rx tab"
+
+    CMD_UNKNOWN:
+      - "I couldn't understand that command. Try one of the examples above."
+
+  Output terminal:
+    - Dark background, green monospace text
+    - Shows: Input / Command / Parsed details / Result for every interaction
+    - Auto-scrolls to latest entry
+
+CaregiverPanel.java
+  Layout   :
+    - Info card (2×2 grid): Name | Email | Phone | Relationship
+    - Escalation log section (scrollable amber monospace text)
+    - Refresh Log button | Test Alert button
+  Features :
+    - Loads both session history and persisted file log
+    - Test Alert fires EscalationService.triggerTestAlert()
+    - Auto-refreshes log on tab switch
+
+--------------------------------------------------------------------------------
+  OOP REQUIREMENTS FULFILLED
+--------------------------------------------------------------------------------
+
+Concept              | Implementation
+---------------------|-----------------------------------------------------------
+Encapsulation        | All fields private; public getters/setters on all models
+Inheritance          | ReminderService extends BaseReminder
+Polymorphism         | List<Notifiable> in ReminderService; both ReminderService
+                       and EscalationService implement Notifiable
+Abstraction          | Notifiable + SpeechCapable interfaces; BaseReminder abstract
+Custom Exceptions    | MedicationNotFoundException, OCRFailureException,
+                       EscalationException; try-catch throughout services
+Generics             | ArrayList<Medication>, HashMap<String,DoseLog>,
+                       Map<String,String> from RegexParser
+Multithreading       | ScheduledExecutorService in BaseReminder + EscalationService;
+                       SwingWorker in ScanPanel + VoicePanel;
+                       ExecutorService in WindowsSpeechRecognizer
+File I/O             | Java serialization (Patient), text append (DoseLog,
+                       EscalationLog) in FileStorageUtil
+Javadoc              | Every class and method fully documented
+
+--------------------------------------------------------------------------------
+  SETUP ISSUES ENCOUNTERED & SOLUTIONS
+--------------------------------------------------------------------------------
+
+Issue 1: 'mvn' is not recognized
+  Cause  : Maven not installed
+  Fix    : Downloaded Maven 3.9.6, added to PATH
+           OR used Maven Wrapper (mvnw.cmd) added to project
+
+Issue 2: mvnw.cmd failed — PowerShell multi-line quoting broke download
+  Fix    : Manually downloaded maven-wrapper.jar using Invoke-WebRequest
+
+Issue 3: JAVA_HOME not found
+  Cause  : Java installed but PATH not updated in current session
+  Fix    : winget install EclipseAdoptium.Temurin.17.JDK
+           Then refreshed PATH:
+           $env:JAVA_HOME = "C:\Program Files\Eclipse Adoptium\jdk-17.0.18.8-hotspot"
+           $env:Path = "$env:JAVA_HOME\bin;" + $env:Path
+
+Issue 4: '&&' not valid in PowerShell
+  Fix    : Run mvn compile and mvn exec:java as separate lines
+
+Issue 5: Voice said "paracetamol" but recognised as "The rest of the"
+  Cause  : Windows Speech Recognition accuracy for medical terms / accents
+  Fix 1  : Improved PowerShell script with:
+             InitialSilenceTimeout = 6 seconds
+             EndSilenceTimeout = 2 seconds
+             BabbleTimeout = 0
+             Returns up to 3 alternate recognition hypotheses
+  Fix 2  : Added Review & Confirm dialog showing what was heard,
+             with editable field + alternate chips before processing
+
+--------------------------------------------------------------------------------
+  KNOWN CONFIGURATION ITEMS (to complete before production use)
+--------------------------------------------------------------------------------
+
+1. SMTP Email (for real caregiver alerts):
+   Edit: AppConstants.SENDER_EMAIL and AppConstants.SENDER_PASSWORD
+   Use a Gmail account with "App Password" (not your real password)
+   Enable 2FA on Gmail, then: Google Account → Security → App Passwords
+
+2. OCR / Tesseract (for real prescription scanning):
+   Download: https://github.com/UB-Mannheim/tesseract/wiki
+   Install and add to system PATH
+   Create tessdata/ folder in project directory
+   Without it: OCRService runs in simulation mode automatically
+
+3. Windows Speech Recognition calibration (for better voice accuracy):
+   Control Panel → Ease of Access → Speech Recognition → Train your computer
+   A 5-minute training session significantly improves accuracy
+
+4. Java JAVA_HOME (permanent setup):
+   Add to System Environment Variables permanently so it persists across
+   PowerShell sessions without needing the $env: commands each time
+
+--------------------------------------------------------------------------------
+  DATA FILES CREATED AT RUNTIME
+--------------------------------------------------------------------------------
+
+data/patient.dat          — Binary serialized Patient object
+data/dose_log.txt         — Append-only text log of all dose events
+data/escalation_log.txt   — Append-only text log of all escalation alerts
+
+--------------------------------------------------------------------------------
+  DEMO PATIENT (loaded on first run)
+--------------------------------------------------------------------------------
+
+Patient   : Ramu Rao (ID: P-001)
+Language  : English
+Caregiver : Priya Sharma (Daughter) — priya.sharma@example.com
+
+Medications:
+  1. Metformin 500mg    — 1 tablet, twice daily,           08:00 AM
+  2. Amlodipine 5mg     — 1 tablet, once daily,            09:00 AM  [CRITICAL]
+  3. Atorvastatin 20mg  — 1 tablet, once daily at bedtime, 09:00 PM
+  4. Aspirin 81mg       — 1 tablet, once daily,            10:00 AM  [CRITICAL]
+
+--------------------------------------------------------------------------------
+  VOICE COMMAND EXAMPLES
+--------------------------------------------------------------------------------
+
+Command Type    | Example Input
+----------------|--------------------------------------------------------------
+Add medication  | add Paracetamol 500mg at 8am once daily
+                | add Vitamin D 1000 IU at 9am
+Mark taken      | mark Aspirin as taken
+                | I took my Metformin
+                | taken (marks first pending)
+Log missed      | I missed my Amlodipine dose
+                | missed Metformin
+Reschedule      | schedule Aspirin at 10am
+                | schedule Metformin at 8:30am
+Scan            | scan prescription
+
+--------------------------------------------------------------------------------
+  END OF DOCUMENTATION
+--------------------------------------------------------------------------------
