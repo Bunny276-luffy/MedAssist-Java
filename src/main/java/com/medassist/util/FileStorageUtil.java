@@ -68,6 +68,11 @@ public final class FileStorageUtil {
         try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
             Patient patient = (Patient) ois.readObject();
             System.out.println("[FileStorageUtil] Patient loaded: " + patient.getName());
+            // Reset all medication statuses to PENDING on each app launch
+            // so today's schedule starts fresh (yesterday's TAKEN states don't carry over)
+            patient.getMedications().forEach(m -> m.setStatus(
+                    com.medassist.model.MedicationStatus.PENDING));
+            System.out.println("[FileStorageUtil] All medication statuses reset to PENDING for today.");
             return patient;
         }
     }

@@ -384,10 +384,6 @@ public class VoicePanel extends JPanel {
     // ── Command Processing ──────────────────────────────────────────────────────
 
     /**
-     * Reads the command input field, injects it into the VoiceEngine, and handles
-     * the resulting command by executing the appropriate medication action.
-     */
-    /**
      * Toggles microphone recording on/off using Windows Speech Recognition.
      * On recognition result, fills the command input field with the transcription.
      */
@@ -578,6 +574,10 @@ public class VoicePanel extends JPanel {
         return null;
     }
 
+    /**
+     * Reads the command input field, injects it into the VoiceEngine, and handles
+     * the resulting command by executing the appropriate medication action on the patient.
+     */
     private void processCommand() {
         if (processing) return;
 

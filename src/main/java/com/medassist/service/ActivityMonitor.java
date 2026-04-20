@@ -1,20 +1,33 @@
 package com.medassist.service;
 
+import java.awt.MouseInfo;
+import java.awt.Point;
+import java.time.LocalTime;
+
 /**
- * Simulates activity detection for the patient in the MedAssist system.
+ * Detects whether the patient is currently active by monitoring real system input.
  *
- * <p>In a production deployment, this class would integrate with platform-specific
- * sensors (motion, screen touch, microphone activity) to determine whether the
- * patient is currently active. For the current simulation, activity is determined
- * by a combination of the current time-of-day and a random probability factor.</p>
+ * <p>Uses {@link MouseInfo} from the AWT toolkit to sample the mouse cursor position
+ * at two points in time (separated by {@value #POLL_INTERVAL_MS} ms). If the position
+ * has not changed, the system is considered idle and the patient likely inactive.</p>
+ *
+ * <p>A time-of-day guard is also applied: between 22:00 and 06:00 the patient is
+ * always treated as inactive (sleep hours), regardless of mouse movement.</p>
  *
  * <p>This class is stateless and cannot be instantiated.</p>
  *
  * @author MedAssist Team
- * @version 1.0
+ * @version 2.0
  * @see ReminderService
  */
 public final class ActivityMonitor {
+
+    /**
+     * How long (ms) to wait between the two mouse-position samples.
+     * 30 seconds gives a realistic "idle" detection window without blocking the caller
+     * too long — callers should invoke this from a background thread.
+     */
+    private static final long POLL_INTERVAL_MS = 30_000L;
 
     /** Private constructor prevents instantiation. */
     private ActivityMonitor() {
@@ -22,35 +35,81 @@ public final class ActivityMonitor {
     }
 
     /**
-     * Estimates whether the patient is currently active and likely to respond to a reminder.
+     * Determines whether the patient is currently active by comparing two mouse
+     * cursor positions sampled {@value #POLL_INTERVAL_MS} milliseconds apart.
      *
-     * <p>The simulation logic applies two heuristics:
+     * <p>Decision logic:
      * <ol>
-     *   <li><b>Time-of-day check</b>: The system assumes the patient is inactive between
-     *       22:00 (10 PM) and 06:00 (6 AM) — typical sleeping hours.</li>
-     *   <li><b>Random probability</b>: During waking hours, there is a 70% chance that
-     *       the patient is active. This simulates natural variability (e.g., out of room,
-     *       napping).</li>
+     *   <li><b>Sleep-hour guard</b>: returns {@code false} immediately if the current
+     *       hour is between 22:00 and 06:00.</li>
+     *   <li><b>Mouse-idle check</b>: takes an initial cursor reading, sleeps for
+     *       {@value #POLL_INTERVAL_MS} ms, then takes a second reading.
+     *       If the cursor coordinates are identical, the patient is considered inactive.</li>
+     *   <li><b>Fallback</b>: if {@link MouseInfo#getPointerInfo()} returns {@code null}
+     *       (headless environment), falls back to a 70 % probability heuristic.</li>
      * </ol>
      * </p>
      *
-     * <p>A production implementation would replace this with real sensor/platform input.</p>
-     *
-     * @return {@code true} if the patient is estimated to be active, {@code false} otherwise
+     * @return {@code true} if mouse movement was detected (patient active),
+     *         {@code false} if the cursor was stationary or it is a sleep hour
      */
     public static boolean isUserActive() {
-        int hour = java.time.LocalTime.now().getHour();
+        int hour = LocalTime.now().getHour();
 
-        // Consider patient inactive during typical sleeping hours
+        // ── 1. Sleep-hour guard ──────────────────────────────────────────────
         if (hour >= 22 || hour < 6) {
-            System.out.println("[ActivityMonitor] Patient likely asleep (hour=" + hour + ").");
+            System.out.println("[ActivityMonitor] Sleep hours — patient inactive (hour=" + hour + ").");
             return false;
         }
 
-        // During waking hours, apply a 70% probability of being active
+        // ── 2. Mouse idle detection ──────────────────────────────────────────
+        try {
+            java.awt.PointerInfo pi1 = MouseInfo.getPointerInfo();
+            if (pi1 == null) {
+                // Headless environment — fall back to probabilistic check
+                return probabilisticFallback(hour);
+            }
+
+            Point pos1 = pi1.getLocation();
+            System.out.println("[ActivityMonitor] Mouse at (" + pos1.x + "," + pos1.y
+                    + ") — waiting " + (POLL_INTERVAL_MS / 1000) + "s to detect movement…");
+
+            Thread.sleep(POLL_INTERVAL_MS);
+
+            java.awt.PointerInfo pi2 = MouseInfo.getPointerInfo();
+            if (pi2 == null) {
+                return probabilisticFallback(hour);
+            }
+
+            Point pos2 = pi2.getLocation();
+            boolean moved = !pos1.equals(pos2);
+
+            System.out.println("[ActivityMonitor] Mouse was " + (moved ? "MOVED" : "STATIONARY")
+                    + " (" + pos2.x + "," + pos2.y + ") — patient " + (moved ? "ACTIVE" : "INACTIVE") + ".");
+            return moved;
+
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            System.out.println("[ActivityMonitor] Interrupted during idle check — assuming active.");
+            return true;
+        } catch (Exception e) {
+            System.err.println("[ActivityMonitor] Mouse detection error: " + e.getMessage()
+                    + " — using fallback.");
+            return probabilisticFallback(hour);
+        }
+    }
+
+    /**
+     * Probabilistic fallback used when mouse detection is unavailable.
+     * Returns {@code true} with 70 % probability during waking hours.
+     *
+     * @param hour current hour of day
+     * @return {@code true} if randomly determined to be active
+     */
+    private static boolean probabilisticFallback(int hour) {
         boolean active = Math.random() < 0.70;
-        System.out.println("[ActivityMonitor] Patient active=" + active
-                + " (probabilistic check, hour=" + hour + ").");
+        System.out.println("[ActivityMonitor] Fallback — patient active=" + active
+                + " (probabilistic, hour=" + hour + ").");
         return active;
     }
 }

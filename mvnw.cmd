@@ -47,23 +47,14 @@ ECHO Downloading Maven Wrapper...
 SET DOWNLOAD_URL=https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-wrapper/3.2.0/maven-wrapper-3.2.0.jar
 IF NOT "%MVNW_VERBOSE%"=="" ECHO Downloading from: %DOWNLOAD_URL%
 
-PowerShell -Command "&{"^
-    "$webclient = new-object System.Net.WebClient;"^
-    "if (-not (Test-Path '%~dp0.mvn\wrapper')) { New-Item -ItemType Directory -Path '%~dp0.mvn\wrapper' | Out-Null };"^
-    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;"^
-    "$webclient.DownloadFile('%DOWNLOAD_URL%', '%MAVEN_WRAPPER_JAR%')"^
-"}"
+PowerShell -Command "if (-not (Test-Path '%~dp0.mvn\wrapper')) { New-Item -ItemType Directory -Path '%~dp0.mvn\wrapper' | Out-Null }; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri '%DOWNLOAD_URL%' -OutFile '%MAVEN_WRAPPER_JAR%'"
 IF "%ERRORLEVEL%"=="0" GOTO downloadDone
 ECHO ERROR: could not download maven wrapper >&2
 GOTO error
 
 :downloadDone
 IF NOT EXIST "%MAVEN_WRAPPER_PROPERTIES%" (
-  PowerShell -Command "&{"^
-    "$f='%MAVEN_WRAPPER_PROPERTIES%';"^
-    "if (-not (Test-Path (Split-Path $f))) { New-Item -ItemType Directory -Path (Split-Path $f) | Out-Null };"^
-    "Set-Content -Path $f -Value 'distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.6/apache-maven-3.9.6-bin.zip'"^
-  "}"  
+  PowerShell -Command "Set-Content -Path '%MAVEN_WRAPPER_PROPERTIES%' -Value 'distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.6/apache-maven-3.9.6-bin.zip'"
 )
 
 @REM Execute the Java main class

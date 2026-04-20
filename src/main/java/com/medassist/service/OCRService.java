@@ -80,16 +80,22 @@ public class OCRService {
 
         Map<String, String> parsed = RegexParser.parsePrescription(ocrText);
 
+        // With the multi-strategy RegexParser, a completely empty result is very
+        // unlikely. If it does happen (e.g. fully numeric/symbol OCR noise), return
+        // a partial prescription so the user can manually correct the fields in the UI.
         if (parsed.isEmpty()) {
-            throw new OCRFailureException(
-                    "Regex extraction failed — no prescription fields found in OCR output.");
+            System.err.println("[OCRService] Warning: no fields extracted — returning partial result for manual correction.");
+            parsed.put("drugName",  "Unidentified");
+            parsed.put("dosage",    "Unknown");
+            parsed.put("frequency", "Unknown");
+            confidence = 0.10;
         }
 
         return new Prescription(
-                parsed.getOrDefault("drugName", "Unknown Drug"),
-                parsed.getOrDefault("dosage", "Unknown Dosage"),
-                parsed.getOrDefault("frequency", "Unknown Frequency"),
-                parsed.getOrDefault("duration", "Unknown Duration"),
+                parsed.getOrDefault("drugName",  "Unidentified"),
+                parsed.getOrDefault("dosage",    "—"),
+                parsed.getOrDefault("frequency", "—"),
+                parsed.getOrDefault("duration",  "—"),
                 confidence
         );
     }
@@ -126,22 +132,92 @@ public class OCRService {
     }
 
     /**
-     * Generates a sample prescription OCR text string for demonstration purposes.
+     * Generates a randomly-varied realistic prescription OCR text string for demonstration.
      *
-     * <p>The simulated text mimics a realistic handwritten/printed prescription format
-     * so that the regex parser and UI flow can be tested without a Tesseract installation.</p>
+     * <p>Picks from a pool of common medications so each image file produces a different
+     * plausible result — making the simulation useful for UI and regex testing.</p>
      *
-     * @param fileName the image file name (used only for generating a plausible drug name)
+     * @param fileName the image file name (used to seed the random choice for consistency)
      * @return a multi-line simulated prescription text
      */
     private String generateSimulatedOCRText(String fileName) {
-        return "Patient Name: John Doe\n"
-                + "Date: 15/04/2026\n"
-                + "Drug: Metformin 500\n"
-                + "Dosage: 500mg\n"
-                + "Frequency: twice daily\n"
-                + "Duration: 30 days\n"
-                + "Refills: 2\n"
-                + "Dr. A. Smith, M.D.\n";
+        // Pool of realistic prescription templates
+        String[][] pool = {
+            {
+                "Drug: Metformin",
+                "Dosage: 500mg",
+                "Frequency: twice daily",
+                "Duration: 90 days",
+                "Dr. R. Kumar, MBBS"
+            },
+            {
+                "Drug: Amlodipine",
+                "Dosage: 5mg",
+                "Frequency: once daily",
+                "Duration: 30 days",
+                "Dr. S. Mehta, MD"
+            },
+            {
+                "Drug: Atorvastatin",
+                "Dosage: 20mg",
+                "Frequency: once daily at bedtime",
+                "Duration: 60 days",
+                "Dr. P. Rao, MD"
+            },
+            {
+                "Drug: Aspirin",
+                "Dosage: 81mg",
+                "Frequency: once daily",
+                "Duration: 180 days",
+                "Dr. A. Sharma, MBBS"
+            },
+            {
+                "Drug: Lisinopril",
+                "Dosage: 10mg",
+                "Frequency: once daily",
+                "Duration: 30 days",
+                "Dr. V. Nair, MD"
+            },
+            {
+                "Drug: Paracetamol",
+                "Dosage: 500mg",
+                "Frequency: three times daily",
+                "Duration: 5 days",
+                "Dr. K. Singh, MBBS"
+            },
+            {
+                "Drug: Omeprazole",
+                "Dosage: 20mg",
+                "Frequency: once daily",
+                "Duration: 14 days",
+                "Dr. L. Iyer, MD"
+            },
+            {
+                "Drug: Glimepiride",
+                "Dosage: 2mg",
+                "Frequency: once daily with breakfast",
+                "Duration: 90 days",
+                "Dr. B. Reddy, MD"
+            }
+        };
+
+        // Use filename hash to consistently pick the same drug for the same image
+        int idx = Math.abs(fileName.hashCode()) % pool.length;
+        // Add slight randomisation: 30% chance to shift to next entry
+        if (Math.random() < 0.30) {
+            idx = (idx + 1) % pool.length;
+        }
+
+        String[] entry = pool[idx];
+        String date = java.time.LocalDate.now().toString();
+
+        return "Patient: Demo Patient\n"
+                + "Date: " + date + "\n"
+                + entry[0] + "\n"
+                + entry[1] + "\n"
+                + entry[2] + "\n"
+                + entry[3] + "\n"
+                + "Refills: " + (1 + (int)(Math.random() * 3)) + "\n"
+                + entry[4] + "\n";
     }
 }
